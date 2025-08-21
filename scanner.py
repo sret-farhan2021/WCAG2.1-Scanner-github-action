@@ -194,6 +194,9 @@ class AccessibilityScanner:
     def scan_html_with_puppeteer_axe(self, html_file: Path) -> str:
         """Scan HTML file using Puppeteer and axe-core"""
         try:
+            # Ensure Puppeteer is available locally in the repository
+            self.ensure_puppeteer_available()
+            
             # Create a Node.js script to run axe with Puppeteer
             script_content = f"""
             const fs = require('fs');
@@ -215,7 +218,7 @@ class AccessibilityScanner:
                         timeout: 60000
                     }});
                     
-                    // Use globally installed axe-core
+                    // Use locally installed axe-core
                     const axeCorePath = require.resolve('axe-core');
                     const axeScript = fs.readFileSync(axeCorePath, 'utf8');
                     await page.evaluate(axeScript);
@@ -274,6 +277,30 @@ class AccessibilityScanner:
             return {"error": f"Timeout after {Config.TIMEOUT_PER_FILE} seconds for {html_file.name}"}
         except Exception as e:
             return {"error": f"Exception for {html_file.name}: {str(e)}"}
+    
+    def ensure_puppeteer_available(self):
+        """Ensure Puppeteer and axe-core are available locally in the repository"""
+        try:
+            # Check if puppeteer is available locally
+            result = subprocess.run(['npm', 'list', 'puppeteer'], 
+                                  capture_output=True, text=True, timeout=10, cwd=str(self.repo_path))
+            
+            if result.returncode != 0 or 'puppeteer' not in result.stdout:
+                print_status("📦 Installing Puppeteer locally...", "info")
+                
+                # Install puppeteer locally
+                install_result = subprocess.run(['npm', 'install', 'puppeteer', 'axe-core'], 
+                                              capture_output=True, text=True, timeout=120, cwd=str(self.repo_path))
+                
+                if install_result.returncode == 0:
+                    print_status("✅ Puppeteer installed successfully", "success")
+                else:
+                    print_status(f"⚠️ Puppeteer installation failed: {install_result.stderr[:200]}...", "warning")
+            else:
+                print_status("✅ Puppeteer already available locally", "info")
+                
+        except Exception as e:
+            print_status(f"⚠️ Error ensuring Puppeteer availability: {e}", "warning")
     
     def scan_html_with_alternative_method(self, html_file: Path) -> Dict[str, Any]:
         """Alternative method using direct HTML content analysis"""
