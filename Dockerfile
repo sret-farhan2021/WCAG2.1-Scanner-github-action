@@ -1,6 +1,6 @@
 FROM ubuntu:latest
 
-# Install system dependencies
+# Install system dependencies for Puppeteer/Chromium
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -10,20 +10,36 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     git \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libxtst6 \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libgbm1 \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/*
+
+# Upgrade npm to the latest version to avoid compatibility issues
+RUN npm install -g npm@latest
+
+# Install Puppeteer and axe-core globally
+RUN npm install -g puppeteer axe-core
+
+# Find and link the Chromium binary
+RUN CHROMIUM_PATH=$(find /usr/local/lib/node_modules/puppeteer/.local-chromium -name chrome | head -n 1) && \
+    ln -sf $CHROMIUM_PATH /usr/local/bin/chromium-browser && \
+    chmod +x $CHROMIUM_PATH
+
+# Set environment variables for Puppeteer
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium-browser
+ENV NODE_PATH=/usr/local/lib/node_modules
 
 # Create app directory
 WORKDIR /app
-
-# Install Node.js dependencies globally
-RUN npm install -g puppeteer axe-core
-
-# Create symlink to ensure puppeteer is in PATH
-RUN ln -sf /usr/local/lib/node_modules/puppeteer/.local-chromium/linux-*/chrome-linux/chrome /usr/local/bin/chromium-browser
-
-# Set environment variables for Puppeteer
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium-browser
 
 # Copy scanner.py and entrypoint.sh
 COPY scanner.py /usr/bin/scanner.py
