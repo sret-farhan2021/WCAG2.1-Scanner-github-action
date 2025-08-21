@@ -12,10 +12,31 @@ import fnmatch
 import argparse
 from pathlib import Path
 from typing import List, Dict, Any
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-console = Console()
+def print_status(message, level="info"):
+    """Print status messages with different formatting"""
+    timestamp = time.strftime("%H:%M:%S")
+    if level == "error":
+        print(f"[{timestamp}] ❌ {message}")
+    elif level == "warning":
+        print(f"[{timestamp}] ⚠️ {message}")
+    elif level == "success":
+        print(f"[{timestamp}] ✅ {message}")
+    elif level == "info":
+        print(f"[{timestamp}] ℹ️ {message}")
+    else:
+        print(f"[{timestamp}] {message}")
+
+def print_progress(current, total, description=""):
+    """Print progress bar"""
+    if total > 0:
+        percentage = (current / total) * 100
+        bar_length = 30
+        filled_length = int(bar_length * current // total)
+        bar = '█' * filled_length + '-' * (bar_length - filled_length)
+        print(f"\r[{bar}] {percentage:.1f}% {description}", end='', flush=True)
+        if current == total:
+            print()  # New line when complete
 
 class Config:
     REPO_PATH = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
@@ -58,7 +79,7 @@ class AccessibilityScanner:
         files = []
         exclude_dirs = set(Config.EXCLUDE_DIRS)
         
-        console.print(f"[bold blue]Searching for {pattern} files...[/]")
+        print_status(f"Searching for {pattern} files...", "info")
         
         for root, dirs, filenames in os.walk(self.repo_path):
             # Skip excluded directories
@@ -74,17 +95,17 @@ class AccessibilityScanner:
                     
                     files.append(file_path)
         
-        console.print(f"[green]Found {len(files)} {pattern} files[/]")
+        print_status(f"Found {len(files)} {pattern} files.", "success")
         return files
     
     def get_affected_files(self, pattern: str) -> List[Path]:
         """Get only affected/changed files for PRs, or all files for direct pushes"""
         # Check command-line override first
         if Config.SCAN_MODE == 'all':
-            console.print("[bold blue]🔍 Command-line override: scanning entire repository...[/]")
+            print_status("🔍 Command-line override: scanning entire repository...", "info")
             return self.find_files(pattern)
         elif Config.SCAN_MODE == 'affected':
-            console.print("[bold blue]🔍 Command-line override: scanning only affected files...[/]")
+            print_status("🔍 Command-line override: scanning only affected files...", "info")
             return self.get_changed_files(pattern)
         
         # Check if we're in a GitHub Actions environment
@@ -92,21 +113,21 @@ class AccessibilityScanner:
         github_base_ref = os.environ.get('GITHUB_BASE_REF', '')
         github_head_ref = os.environ.get('GITHUB_HEAD_REF', '')
         
-        console.print(f"[dim]GitHub context: Event={github_event}, Base={github_base_ref}, Head={github_head_ref}[/]")
+        print_status(f"GitHub context: Event={github_event}, Base={github_base_ref}, Head={github_head_ref}", "info")
         
         # If it's a PR, scan only affected files
         if github_event == 'pull_request':
-            console.print("[bold blue]🔍 Pull Request detected - scanning only affected files...[/]")
+            print_status("🔍 Pull Request detected - scanning only affected files...", "info")
             return self.get_changed_files(pattern)
         
         # If it's a direct push to main/master, scan everything
         elif github_event == 'push' and github_base_ref in ['main', 'master']:
-            console.print("[bold blue]🔍 Direct push to main/master detected - scanning entire repository...[/]")
+            print_status("🔍 Direct push to main/master detected - scanning entire repository...", "info")
             return self.find_files(pattern)
         
         # Default: scan everything (fallback for local runs or other contexts)
         else:
-            console.print("[bold blue]🔍 Default mode - scanning entire repository...[/]")
+            print_status("🔍 Default mode - scanning entire repository...", "info")
             return self.find_files(pattern)
     
     def get_changed_files(self, pattern: str) -> List[Path]:
@@ -121,11 +142,11 @@ class AccessibilityScanner:
             ], capture_output=True, text=True, timeout=30, cwd=str(self.repo_path))
             
             if result.returncode != 0:
-                console.print(f"[yellow]⚠️ Git diff failed, falling back to full scan: {result.stderr}[/]")
+                print_status(f"⚠️ Git diff failed, falling back to full scan: {result.stderr}", "warning")
                 return self.find_files(pattern)
             
             changed_files = result.stdout.strip().split('\n') if result.stdout.strip() else []
-            console.print(f"[dim]Git diff found {len(changed_files)} changed files[/]")
+            print_status(f"Git diff found {len(changed_files)} changed files", "info")
             
             # Filter for files matching the pattern
             matching_files = []
@@ -135,11 +156,11 @@ class AccessibilityScanner:
                     if full_path.exists() and not self.should_exclude_file(full_path):
                         matching_files.append(full_path)
             
-            console.print(f"[green]Found {len(matching_files)} changed {pattern} files[/]")
+            print_status(f"Found {len(matching_files)} changed {pattern} files.", "success")
             return matching_files
             
         except Exception as e:
-            console.print(f"[yellow]⚠️ Error getting changed files: {e}, falling back to full scan[/]")
+            print_status(f"⚠️ Error getting changed files: {e}, falling back to full scan", "warning")
             return self.find_files(pattern)
     
     def scan_html_with_puppeteer_axe(self, html_file: Path) -> Dict[str, Any]:
@@ -149,12 +170,12 @@ class AccessibilityScanner:
             try:
                 result = subprocess.run(['npm', 'list', 'puppeteer', 'axe-core'], 
                                       capture_output=True, text=True, timeout=10, cwd=str(self.repo_path), check=True)
-                console.print(f"[dim]Puppeteer/axe-core check: {result.stdout[:200]}...[/]")
+                print_status(f"Puppeteer/axe-core check: {result.stdout[:200]}...", "info")
             except:
-                console.print("[yellow]⚠️ Puppeteer/axe-core not found, installing...[/]")
+                print_status("⚠️ Puppeteer/axe-core not found, installing...", "warning")
                 result = subprocess.run(['npm', 'install', 'puppeteer', 'axe-core'], 
                                       capture_output=True, text=True, timeout=120, cwd=str(self.repo_path))
-                console.print(f"[dim]Puppeteer install result: {result.stderr[:200]}...[/]" if result.stderr else "[green]Install successful[/]")
+                print_status(f"Puppeteer install result: {result.stderr[:200]}..." if result.stderr else "Install successful", "success")
             
             # Create a Node.js script to run axe with Puppeteer
             script_content = f"""
@@ -211,9 +232,9 @@ class AccessibilityScanner:
             # Clean up script
             os.unlink(script_path)
             
-            console.print(f"[dim]Puppeteer exit code for {html_file.name}: {result.returncode}[/]")
-            console.print(f"[dim]Puppeteer STDOUT: {result.stdout[:200]}...[/]" if result.stdout else "[dim]STDOUT: (empty)[/]")
-            console.print(f"[dim]Puppeteer STDERR: {result.stderr[:200]}...[/]" if result.stderr else "[dim]STDERR: (empty)[/]")
+            print_status(f"Puppeteer exit code for {html_file.name}: {result.returncode}", "info")
+            print_status(f"Puppeteer STDOUT: {result.stdout[:200]}...", "info")
+            print_status(f"Puppeteer STDERR: {result.stderr[:200]}...", "info")
             
             if result.returncode == 0 and result.stdout.strip():
                 try:
@@ -315,14 +336,14 @@ class AccessibilityScanner:
     
     def scan_html_file(self, html_file: Path) -> Dict[str, Any]:
         """Main HTML scanning method using Puppeteer"""
-        console.print(f"[dim]Scanning: {html_file.name}[/]")
+        print_status(f"Scanning: {html_file.name}", "info")
         
         # Try Puppeteer method
         result = self.scan_html_with_puppeteer_axe(html_file)
         
         # If Puppeteer fails, use fallback
         if "error" in result:
-            console.print(f"[yellow]⚠️ Puppeteer failed for {html_file.name}, using fallback method[/]")
+            print_status(f"⚠️ Puppeteer failed for {html_file.name}, using fallback method", "warning")
             result = self.scan_html_with_alternative_method(html_file)
         
         return result
@@ -330,9 +351,9 @@ class AccessibilityScanner:
     def generate_html_report(self, results: Dict[str, Any]):
         """Generate interactive HTML report with pagination, violations, and incomplete results"""
         import html
-        console.print("[bold blue]🔍 Generating HTML report...[/]")
-        console.print(f"[dim]Results keys: {list(results.keys())}[/]")  # Debug: Print file paths
-        console.print(f"[dim]Total results: {len(results)}[/]")  # Debug: Print total files
+        print_status("🔍 Generating HTML report...", "info")
+        print_status(f"Results keys: {list(results.keys())}", "info")  # Debug: Print file paths
+        print_status(f"Total results: {len(results)}", "info")  # Debug: Print total files
         
         html_template = """
         <!DOCTYPE html>
@@ -458,7 +479,7 @@ class AccessibilityScanner:
         
         # Process each file in results
         for file_path, file_results in sorted(results.items()):  # Sort for consistent order
-            console.print(f"[dim]Processing file: {file_path}[/]")  # Debug: Log each file
+            print_status(f"Processing file: {file_path}", "info")  # Debug: Log each file
             file_id = file_path.replace('/', '_').replace('.', '_').replace(' ', '_')
             
             if isinstance(file_results, dict) and 'error' in file_results:
@@ -503,8 +524,8 @@ class AccessibilityScanner:
                 total_violations += len(violations)
                 total_incomplete += len(incomplete)
                 
-                console.print(f"[dim]Violations for {file_path}: {len(violations)}[/]")  # Debug: Log violations
-                console.print(f"[dim]Incomplete results for {file_path}: {len(incomplete)}[/]")  # Debug: Log incomplete
+                print_status(f"Violations for {file_path}: {len(violations)}", "info")  # Debug: Log violations
+                print_status(f"Incomplete results for {file_path}: {len(incomplete)}", "info")  # Debug: Log incomplete
                 
                 if violations or incomplete:
                     results_html.append(f'''
@@ -612,16 +633,16 @@ class AccessibilityScanner:
         
         # Validate HTML size
         html_lines = len(html_content.splitlines())
-        console.print(f"[dim]Generated HTML lines: {html_lines}[/]")
+        print_status(f"Generated HTML lines: {html_lines}", "info")
         if html_lines < 100 or total_files != len(results_html):
-            console.print(f"[red]⚠️ Warning: HTML may be truncated. Expected {total_files} file sections, found {len(results_html)}[/]")
+            print_status(f"⚠️ Warning: HTML may be truncated. Expected {total_files} file sections, found {len(results_html)}", "warning")
         
         # Save HTML report
         html_report_path = self.output_dir / "report.html"
         with open(html_report_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
-        console.print(f"[green]✓ HTML report generated: {html_report_path} (approx. {html_lines} lines)[/]")
+        print_status(f"✓ HTML report generated: {html_report_path} (approx. {html_lines} lines)", "success")
         return html_report_path
     
     def generate_json_report(self, results: Dict[str, Any]):
@@ -633,41 +654,36 @@ class AccessibilityScanner:
     
     def run_scan(self):
         """Main scanning method"""
-        console.print("[bold green]🚀 Starting WCAG Accessibility Scan[/]")
-        console.print(f"[dim]Repository: {self.repo_path}[/]")
+        print_status("🚀 Starting WCAG Accessibility Scan", "success")
+        print_status(f"Repository: {self.repo_path}", "info")
         
         # Find files using intelligent detection
         html_files = self.get_affected_files('.html')[:Config.FILE_LIMITS["html"]]
         
-        console.print(f"[bold]Found:[/] {len(html_files)} .html files to scan")
+        print_status(f"Found: {len(html_files)} .html files to scan", "success")
         
         results = {}
         
         # Scan HTML files
         if html_files:
-            console.print("[bold blue]📄 Scanning .html files with Puppeteer...[/]")
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TimeElapsedColumn(),
-            ) as progress:
-                task = progress.add_task(".html files", total=len(html_files))
-                
-                for html_file in html_files:
-                    results[str(html_file.relative_to(self.repo_path))] = self.scan_html_file(html_file)
-                    progress.update(task, advance=1)
+            print_status("📄 Scanning .html files with Puppeteer...", "info")
+            
+            for i, html_file in enumerate(html_files):
+                print_progress(i + 1, len(html_files), f"Scanning {html_file.name}")
+                results[str(html_file.relative_to(self.repo_path))] = self.scan_html_file(html_file)
+            
+            print()  # New line after progress bar
         else:
-            console.print("[yellow]⚠️ No HTML files found to scan[/]")
+            print_status("⚠️ No HTML files found to scan", "warning")
         
         # Generate reports
-        console.print("[bold blue]📊 Generating reports...[/]")
+        print_status("📊 Generating reports...", "info")
         json_report = self.generate_json_report(results)
         html_report = self.generate_html_report(results)
         
-        console.print(f"[green]✓ JSON report: {json_report}[/]")
-        console.print(f"[green]✓ HTML report: {html_report}[/]")
-        console.print("[bold green]✅ Scan completed![/]")
+        print_status(f"✓ JSON report: {json_report}", "success")
+        print_status(f"✓ HTML report: {html_report}", "success")
+        print_status("✅ Scan completed!", "success")
         
         return html_report
 
@@ -691,24 +707,24 @@ def main():
         if args.output_dir:
             Config.OUTPUT_DIR = args.output_dir
         
-        console.print(f"[bold blue]🔧 Configuration:[/]")
-        console.print(f"[dim]  Scan Mode: {args.mode}[/]")
-        console.print(f"[dim]  Repository: {Config.REPO_PATH}[/]")
-        console.print(f"[dim]  Output: {Config.OUTPUT_DIR}[/]")
-        console.print("")
+        print_status("🔧 Configuration:", "info")
+        print_status(f"  Scan Mode: {args.mode}", "info")
+        print_status(f"  Repository: {Config.REPO_PATH}", "info")
+        print_status(f"  Output: {Config.OUTPUT_DIR}", "info")
+        print("")
         
         scanner = AccessibilityScanner()
         html_report = scanner.run_scan()
         
-        console.print(f"[bold green]✅ Scan completed! Report saved to: {html_report}[/]")
-        console.print("[bold blue]📊 The HTML report can be downloaded as an artifact from the GitHub Actions run.[/]")
+        print_status(f"✅ Scan completed! Report saved to: {html_report}", "success")
+        print_status("📊 The HTML report can be downloaded as an artifact from the GitHub Actions run.", "info")
         
     except KeyboardInterrupt:
-        console.print("[yellow]⏹️ Scan interrupted by user[/]")
+        print_status("⏹️ Scan interrupted by user", "warning")
     except Exception as e:
-        console.print(f"[red]❌ Error: {e}[/]")
+        print_status(f"❌ Error: {e}", "error")
         import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/]")
+        print_status(f"{traceback.format_exc()}", "info")
         sys.exit(1)
 
 if __name__ == "__main__":

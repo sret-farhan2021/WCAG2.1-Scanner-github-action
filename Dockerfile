@@ -15,9 +15,6 @@ RUN apt-get update && apt-get install -y \
 # Create app directory
 WORKDIR /app
 
-# Install Python dependencies directly
-RUN pip3 install rich
-
 # Install Node.js dependencies
 RUN npm install puppeteer axe-core
 
