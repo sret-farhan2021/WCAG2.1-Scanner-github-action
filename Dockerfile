@@ -5,8 +5,6 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
-    nodejs \
-    npm \
     curl \
     wget \
     git \
@@ -22,8 +20,13 @@ RUN apt-get update && apt-get install -y \
     libasound2t64 \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade npm to the latest version to avoid compatibility issues
-RUN npm install -g npm@latest
+# Install Node.js 20 and npm from nodesource
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Verify Node.js and npm versions
+RUN node --version && npm --version
 
 # Install Puppeteer and axe-core globally
 RUN npm install -g puppeteer axe-core
