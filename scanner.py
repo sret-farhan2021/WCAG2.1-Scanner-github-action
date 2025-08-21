@@ -57,6 +57,34 @@ class AccessibilityScanner:
         self.output_dir = Path(Config.OUTPUT_DIR)
         self.output_dir.mkdir(exist_ok=True)
         
+        # Get repository name for better display
+        self.repo_name = self.get_repo_name()
+    
+    def get_repo_name(self) -> str:
+        """Get a friendly repository name for display"""
+        try:
+            # Try to get repo name from git
+            result = subprocess.run(['git', 'remote', 'get-url', 'origin'], 
+                                  capture_output=True, text=True, timeout=10, cwd=str(self.repo_path))
+            if result.returncode == 0 and result.stdout.strip():
+                # Extract repo name from git URL
+                url = result.stdout.strip()
+                if 'github.com' in url:
+                    # Extract owner/repo from https://github.com/owner/repo.git
+                    parts = url.split('/')
+                    if len(parts) >= 2:
+                        return f"{parts[-2]}/{parts[-1].replace('.git', '')}"
+                    else:
+                        return "Unknown Repository"
+                else:
+                    return "Local Repository"
+            else:
+                # Fallback to directory name
+                return self.repo_path.name if self.repo_path.name else "Repository"
+        except Exception:
+            # Final fallback
+            return self.repo_path.name if self.repo_path.name else "Repository"
+        
     def should_exclude_file(self, file_path: Path) -> bool:
         """Check if a file should be excluded based on patterns"""
         filename = file_path.name
@@ -618,7 +646,28 @@ class AccessibilityScanner:
                 </div>
             """
         else:
-            tests_executed_section = '<p><em>No tests were executed (possibly due to errors or empty results)</em></p>'
+            # Check if no HTML files were found
+            if total_files == 0:
+                tests_executed_section = f"""
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+                        <h4>⚠️ No Tests Executed</h4>
+                        <p><strong>Reason:</strong> No HTML files were found in the repository <strong>{self.repo_name}</strong>.</p>
+                        <p><strong>What this means:</strong></p>
+                        <ul>
+                            <li>This repository doesn't contain any <code>.html</code> files</li>
+                            <li>HTML files might be in excluded directories (like <code>dist</code>, <code>build</code>, etc.)</li>
+                            <li>HTML files might have different extensions (like <code>.htm</code>)</li>
+                        </ul>
+                        <p><strong>To run accessibility tests:</strong></p>
+                        <ul>
+                            <li>Ensure your repository contains <code>.html</code> files</li>
+                            <li>Check that HTML files are not in excluded directories</li>
+                            <li>Consider adding HTML files to test accessibility compliance</li>
+                        </ul>
+                    </div>
+                """
+            else:
+                tests_executed_section = '<p><em>No tests were executed (possibly due to errors or empty results)</em></p>'
         
         # Replace placeholders
         html_content = html_template \
@@ -627,7 +676,7 @@ class AccessibilityScanner:
             .replace('{{total_violations}}', str(total_violations)) \
             .replace('{{total_incomplete}}', str(total_incomplete)) \
             .replace('{{error_files}}', str(error_files)) \
-            .replace('{{repo_path}}', str(self.repo_path)) \
+            .replace('{{repo_path}}', str(self.repo_name)) \
             .replace('{{tests_executed_section}}', tests_executed_section) \
             .replace('{{results}}', '\n'.join(results_html) if results_html else '<div class="success">🎉 No accessibility issues found!</div>')
         
@@ -674,7 +723,7 @@ class AccessibilityScanner:
             
             print()  # New line after progress bar
         else:
-            print_status("⚠️ No HTML files found to scan", "warning")
+            print_status(f"⚠️ No HTML files found to scan in {self.repo_name}. No tests will be executed.", "warning")
         
         # Generate reports
         print_status("📊 Generating reports...", "info")
@@ -707,13 +756,14 @@ def main():
         if args.output_dir:
             Config.OUTPUT_DIR = args.output_dir
         
+        scanner = AccessibilityScanner()
+        
         print_status("🔧 Configuration:", "info")
         print_status(f"  Scan Mode: {args.mode}", "info")
-        print_status(f"  Repository: {Config.REPO_PATH}", "info")
+        print_status(f"  Repository: {scanner.repo_name}", "info")
         print_status(f"  Output: {Config.OUTPUT_DIR}", "info")
         print("")
         
-        scanner = AccessibilityScanner()
         html_report = scanner.run_scan()
         
         print_status(f"✅ Scan completed! Report saved to: {html_report}", "success")
