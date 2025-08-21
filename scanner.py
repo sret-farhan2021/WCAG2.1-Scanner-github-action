@@ -191,20 +191,9 @@ class AccessibilityScanner:
             print_status(f"⚠️ Error getting changed files: {e}, falling back to full scan", "warning")
             return self.find_files(pattern)
     
-    def scan_html_with_puppeteer_axe(self, html_file: Path) -> Dict[str, Any]:
+    def scan_html_with_puppeteer_axe(self, html_file: Path) -> str:
         """Scan HTML file using Puppeteer and axe-core"""
         try:
-            # Check if puppeteer and axe-core are available
-            try:
-                result = subprocess.run(['npm', 'list', 'puppeteer', 'axe-core'], 
-                                      capture_output=True, text=True, timeout=10, cwd=str(self.repo_path), check=True)
-                print_status(f"Puppeteer/axe-core check: {result.stdout[:200]}...", "info")
-            except:
-                print_status("⚠️ Puppeteer/axe-core not found, installing...", "warning")
-                result = subprocess.run(['npm', 'install', 'puppeteer', 'axe-core'], 
-                                      capture_output=True, text=True, timeout=120, cwd=str(self.repo_path))
-                print_status(f"Puppeteer install result: {result.stderr[:200]}..." if result.stderr else "Install successful", "success")
-            
             # Create a Node.js script to run axe with Puppeteer
             script_content = f"""
             const fs = require('fs');
@@ -213,6 +202,7 @@ class AccessibilityScanner:
             async function runAxe() {{
                 const browser = await puppeteer.launch({{ 
                     headless: 'new',
+                    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
                     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
                 }});
                 const page = await browser.newPage();
@@ -224,9 +214,12 @@ class AccessibilityScanner:
                         waitUntil: 'networkidle0',
                         timeout: 60000
                     }});
+                    
+                    // Use globally installed axe-core
                     const axeCorePath = require.resolve('axe-core');
                     const axeScript = fs.readFileSync(axeCorePath, 'utf8');
                     await page.evaluate(axeScript);
+                    
                     const results = await page.evaluate(async () => {{
                         return await axe.run();
                     }});

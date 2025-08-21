@@ -15,11 +15,15 @@ RUN apt-get update && apt-get install -y \
 # Create app directory
 WORKDIR /app
 
-# Install Node.js dependencies
-RUN npm install puppeteer axe-core
+# Install Node.js dependencies globally
+RUN npm install -g puppeteer axe-core
 
-# Install axe-core globally
-RUN npm install -g axe-core
+# Create symlink to ensure puppeteer is in PATH
+RUN ln -sf /usr/local/lib/node_modules/puppeteer/.local-chromium/linux-*/chrome-linux/chrome /usr/local/bin/chromium-browser
+
+# Set environment variables for Puppeteer
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium-browser
 
 # Copy scanner.py and entrypoint.sh
 COPY scanner.py /usr/bin/scanner.py
