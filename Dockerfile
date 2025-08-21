@@ -29,15 +29,20 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
 RUN node --version && npm --version
 
 # Install Puppeteer and axe-core globally
+# Do not set PUPPETEER_SKIP_CHROMIUM_DOWNLOAD here to ensure Chromium is downloaded
 RUN npm install -g puppeteer axe-core
 
 # Find and link the Chromium binary
 RUN CHROMIUM_PATH=$(find /usr/local/lib/node_modules/puppeteer/.local-chromium -name chrome | head -n 1) && \
-    ln -sf $CHROMIUM_PATH /usr/local/bin/chromium-browser && \
-    chmod +x $CHROMIUM_PATH
+    if [ -n "$CHROMIUM_PATH" ]; then \
+        ln -sf $CHROMIUM_PATH /usr/local/bin/chromium-browser && \
+        chmod +x $CHROMIUM_PATH; \
+    else \
+        echo "Error: Chromium binary not found in /usr/local/lib/node_modules/puppeteer/.local-chromium"; \
+        exit 1; \
+    fi
 
 # Set environment variables for Puppeteer
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium-browser
 ENV NODE_PATH=/usr/local/lib/node_modules
 
