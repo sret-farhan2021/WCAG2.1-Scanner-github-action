@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM debian:bullseye-slim
 
 # Install system dependencies for Puppeteer/Chromium
 RUN apt-get update && apt-get install -y \
@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     git \
-    software-properties-common \
+    gnupg \
+    ca-certificates \
     libx11-xcb1 \
     libxcomposite1 \
     libxdamage1 \
@@ -18,12 +19,14 @@ RUN apt-get update && apt-get install -y \
     libatk-bridge2.0-0 \
     libgtk-3-0 \
     libgbm1 \
-    libasound2t64 \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Add universe repository and install Chromium from there (non-snap version)
-RUN apt-get update && \
-    apt-get install -y chromium-browser && \
+# Install Google Chrome (which includes Chromium) from official repository
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && \
+    apt-get install -y google-chrome-stable && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 and npm from nodesource
@@ -40,17 +43,17 @@ RUN npm cache clean --force
 # Create app directory
 WORKDIR /app
 
-# Set environment variables to skip Puppeteer's Chromium download and use system Chromium
+# Set environment variables to skip Puppeteer's Chromium download and use Google Chrome
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 # Install Puppeteer and axe-core locally
 RUN npm init -y && \
     npm install puppeteer@22.12.1 axe-core
 
-# Verify Chromium binary exists and is executable
-RUN ls -la /usr/bin/chromium-browser && \
-    /usr/bin/chromium-browser --version || echo "Chromium version check failed"
+# Verify Chrome binary exists and is executable
+RUN ls -la /usr/bin/google-chrome-stable && \
+    /usr/bin/google-chrome-stable --version || echo "Chrome version check failed"
 
 # Copy scanner.py and entrypoint.sh
 COPY scanner.py /usr/bin/scanner.py
