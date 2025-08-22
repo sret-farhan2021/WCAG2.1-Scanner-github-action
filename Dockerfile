@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     git \
+    chromium-browser \
     libx11-xcb1 \
     libxcomposite1 \
     libxdamage1 \
@@ -34,33 +35,15 @@ RUN npm cache clean --force
 # Create app directory
 WORKDIR /app
 
-# Install Puppeteer and axe-core locally (not globally)
+# Install Puppeteer and axe-core locally, skipping Chromium download
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 RUN npm init -y && \
     npm install puppeteer@22.12.1 axe-core
 
-# Debug Puppeteer installation and Chromium download
-RUN npm list puppeteer && \
-    find node_modules/puppeteer -type d -name .local-chromium || echo "No .local-chromium directory found" && \
-    ls -la node_modules/puppeteer/.local-chromium || echo "No files in .local-chromium"
-
-# Find and link the Chromium binary
-RUN CHROMIUM_PATH=$(find node_modules/puppeteer/.local-chromium -name chrome | head -n 1) && \
-    if [ -n "$CHROMIUM_PATH" ]; then \
-        ln -sf $CHROMIUM_PATH /usr/local/bin/chromium-browser && \
-        chmod +x $CHROMIUM_PATH && \
-        echo "Chromium binary linked to /usr/local/bin/chromium-browser"; \
-    else \
-        echo "Error: Chromium binary not found in node_modules/puppeteer/.local-chromium"; \
-        find node_modules/puppeteer -type f; \
-        exit 1; \
-    fi
-
 # Verify Chromium binary
-RUN ls -l /usr/local/bin/chromium-browser || echo "Chromium binary not found at /usr/local/bin/chromium-browser"
-
-# Set environment variables for Puppeteer
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium-browser
-ENV NODE_PATH=/app/node_modules
+RUN ls -l /usr/bin/chromium-browser || echo "Chromium binary not found at /usr/bin/chromium-browser"
 
 # Copy scanner.py and entrypoint.sh
 COPY scanner.py /usr/bin/scanner.py
