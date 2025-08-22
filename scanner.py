@@ -280,25 +280,33 @@ class AccessibilityScanner:
           return {"error": f"Exception for {html_file.name}: {str(e)}"}
     
     def ensure_puppeteer_available(self):
-      """Ensure Puppeteer and axe-core are available globally"""
-    try:
-        # Check if puppeteer is available globally
-        result = subprocess.run(['npm', 'list', '-g', 'puppeteer'], 
-                              capture_output=True, text=True, timeout=10)
-        
-        if result.returncode == 0 and 'puppeteer' in result.stdout:
-            print_status("✅ Puppeteer already available globally", "info")
-            # Ensure NODE_PATH includes global node_modules
-            global_node_path = subprocess.run(['npm', 'root', '-g'], 
-                                            capture_output=True, text=True, timeout=10).stdout.strip()
-            os.environ['NODE_PATH'] = f"{global_node_path}:{os.environ.get('NODE_PATH', '')}"
-        else:
-            print_status("⚠️ Global Puppeteer not found", "warning")
-            raise Exception("Global Puppeteer not found")
-                
-    except Exception as e:
-        print_status(f"⚠️ Error ensuring Puppeteer availability: {e}", "warning")
-        raise
+        """Ensure Puppeteer and axe-core are available locally"""
+        try:
+            # Check if puppeteer is available locally in /app/node_modules
+            local_puppeteer_path = "/app/node_modules/puppeteer"
+            if os.path.exists(local_puppeteer_path):
+                print_status("✅ Puppeteer found locally", "info")
+                # Set NODE_PATH to include local node_modules
+                os.environ['NODE_PATH'] = "/app/node_modules"
+                return
+            
+            # Fallback: check if puppeteer is available globally
+            result = subprocess.run(['npm', 'list', '-g', 'puppeteer'], 
+                                  capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0 and 'puppeteer' in result.stdout:
+                print_status("✅ Puppeteer available globally", "info")
+                # Ensure NODE_PATH includes global node_modules
+                global_node_path = subprocess.run(['npm', 'root', '-g'], 
+                                                capture_output=True, text=True, timeout=10).stdout.strip()
+                os.environ['NODE_PATH'] = f"{global_node_path}:{os.environ.get('NODE_PATH', '')}"
+            else:
+                print_status("⚠️ Puppeteer not found locally or globally", "warning")
+                raise Exception("Puppeteer not found locally or globally")
+                    
+        except Exception as e:
+            print_status(f"⚠️ Error ensuring Puppeteer availability: {e}", "warning")
+            raise
 
     def scan_html_with_alternative_method(self, html_file: Path) -> Dict[str, Any]:
         """Alternative method using direct HTML content analysis"""
