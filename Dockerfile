@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libgbm1 \
     libasound2t64 \
+    chromium-browser \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 and npm from nodesource
@@ -28,22 +29,15 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
 # Verify Node.js and npm versions
 RUN node --version && npm --version
 
-# Install Puppeteer and axe-core globally
-# Do not set PUPPETEER_SKIP_CHROMIUM_DOWNLOAD here to ensure Chromium is downloaded
-RUN npm install -g puppeteer axe-core
+# Clear npm cache to avoid installation issues
+RUN npm cache clean --force
 
-# Find and link the Chromium binary
-RUN CHROMIUM_PATH=$(find /usr/local/lib/node_modules/puppeteer/.local-chromium -name chrome | head -n 1) && \
-    if [ -n "$CHROMIUM_PATH" ]; then \
-        ln -sf $CHROMIUM_PATH /usr/local/bin/chromium-browser && \
-        chmod +x $CHROMIUM_PATH; \
-    else \
-        echo "Error: Chromium binary not found in /usr/local/lib/node_modules/puppeteer/.local-chromium"; \
-        exit 1; \
-    fi
+# Install Puppeteer and axe-core globally, skipping Chromium download
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+RUN npm install -g puppeteer@22.12.1 axe-core
 
-# Set environment variables for Puppeteer
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium-browser
+# Set environment variables for Puppeteer to use system-wide Chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV NODE_PATH=/usr/local/lib/node_modules
 
 # Create app directory
