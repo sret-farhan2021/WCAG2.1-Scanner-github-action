@@ -192,92 +192,101 @@ class AccessibilityScanner:
             return self.find_files(pattern)
     
     def scan_html_with_puppeteer_axe(self, html_file: Path) -> str:
-      """Scan HTML file using Puppeteer and axe-core"""
-      try:
-          # Create a Node.js script to run axe with Puppeteer
-          script_content = f"""
-          const fs = require('fs');
-          const puppeteer = require('puppeteer');
-          
-          async function runAxe() {{
-              const browser = await puppeteer.launch({{ 
-                  headless: 'new',
-                  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-                  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
-              }});
-              const page = await browser.newPage();
-              
-              try {{
-                  await page.setDefaultNavigationTimeout(60000);
-                  const htmlContent = fs.readFileSync('{html_file.absolute()}', 'utf8');
-                  await page.setContent(htmlContent, {{
-                      waitUntil: 'networkidle0',
-                      timeout: 60000
-                  }});
-                  
-                  // Use global axe-core
-                  const axeCorePath = require.resolve('axe-core');
-                  const axeScript = fs.readFileSync(axeCorePath, 'utf8');
-                  await page.evaluate(axeScript);
-                  
-                  const results = await page.evaluate(async () => {{
-                      return await axe.run();
-                  }});
-                  console.log(JSON.stringify(results));
-                  await browser.close();
-                  process.exit(0);
-              }} catch (error) {{
-                  console.error(JSON.stringify({{ error: error.message, stack: error.stack }}));
-                  await browser.close();
-                  process.exit(1);
-              }}
-          }}
-          
-          runAxe().catch(error => {{
-              console.error(JSON.stringify({{ error: error.message, stack: error.stack }}));
-              process.exit(1);
-          }});
-          """
-          
-          # Write temporary script
-          temp_dir = os.path.abspath(str(self.repo_path))
-          with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False, dir=temp_dir) as script_file:
-              script_file.write(script_content)
-              script_path = script_file.name
-          
-          # Run the script
-          result = subprocess.run(
-              ['node', script_path],
-              capture_output=True,
-              text=True,
-              timeout=Config.TIMEOUT_PER_FILE,
-              cwd=str(self.repo_path)
-          )
-          
-          # Clean up script
-          os.unlink(script_path)
-          
-          print_status(f"Puppeteer exit code for {html_file.name}: {result.returncode}", "info")
-          print_status(f"Puppeteer STDOUT: {result.stdout[:200]}...", "info")
-          print_status(f"Puppeteer STDERR: {result.stderr[:200]}...", "info")
-          
-          if result.returncode == 0 and result.stdout.strip():
-              try:
-                  return json.loads(result.stdout)
-              except json.JSONDecodeError:
-                  return {"error": f"Invalid JSON output for {html_file.name}: {result.stdout}"}
-          else:
-              error_msg = result.stderr if result.stderr else result.stdout
-              try:
-                  error_data = json.loads(error_msg)
-                  return {"error": error_data.get('error', error_msg)}
-              except:
-                  return {"error": f"Puppeteer error for {html_file.name}: {error_msg}"}
-                  
-      except subprocess.TimeoutExpired:
-          return {"error": f"Timeout after {Config.TIMEOUT_PER_FILE} seconds for {html_file.name}"}
-      except Exception as e:
-          return {"error": f"Exception for {html_file.name}: {str(e)}"}
+        """Scan HTML file using Puppeteer and axe-core"""
+        try:
+            # Create a Node.js script to run axe with Puppeteer
+            script_content = f"""
+            const fs = require('fs');
+            const puppeteer = require('puppeteer');
+            
+            async function runAxe() {{
+                const browser = await puppeteer.launch({{ 
+                    headless: 'new',
+                    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+                    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
+                }});
+                const page = await browser.newPage();
+                
+                try {{
+                    await page.setDefaultNavigationTimeout(60000);
+                    const htmlContent = fs.readFileSync('{html_file.absolute()}', 'utf8');
+                    await page.setContent(htmlContent, {{
+                        waitUntil: 'networkidle0',
+                        timeout: 60000
+                    }});
+                    
+                    // Use global axe-core
+                    const axeCorePath = require.resolve('axe-core');
+                    const axeScript = fs.readFileSync(axeCorePath, 'utf8');
+                    await page.evaluate(axeScript);
+                    
+                    const results = await page.evaluate(async () => {{
+                        return await axe.run();
+                    }});
+                    console.log(JSON.stringify(results));
+                    await browser.close();
+                    process.exit(0);
+                }} catch (error) {{
+                    console.error(JSON.stringify({{ error: error.message, stack: error.stack }}));
+                    await browser.close();
+                    process.exit(1);
+                }}
+            }}
+            
+            runAxe().catch(error => {{
+                console.error(JSON.stringify({{ error: error.message, stack: error.stack }}));
+                process.exit(1);
+            }});
+            """
+            
+            # Write temporary script
+            temp_dir = os.path.abspath(str(self.repo_path))
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False, dir=temp_dir) as script_file:
+                script_file.write(script_content)
+                script_path = script_file.name
+            
+            # Set up environment for Node.js execution
+            env = os.environ.copy()
+            if 'NODE_PATH' in env:
+                # Ensure NODE_PATH includes both local and global paths
+                env['NODE_PATH'] = f"/app/node_modules:{env['NODE_PATH']}"
+            else:
+                env['NODE_PATH'] = "/app/node_modules"
+            
+            # Run the script with proper environment and working directory
+            result = subprocess.run(
+                ['node', script_path],
+                capture_output=True,
+                text=True,
+                timeout=Config.TIMEOUT_PER_FILE,
+                cwd="/app",  # Run from /app directory where node_modules is located
+                env=env
+            )
+            
+            # Clean up script
+            os.unlink(script_path)
+            
+            print_status(f"Puppeteer exit code for {html_file.name}: {result.returncode}", "info")
+            print_status(f"Puppeteer STDOUT: {result.stdout[:200]}...", "info")
+            print_status(f"Puppeteer STDERR: {result.stderr[:200]}...", "info")
+            
+            if result.returncode == 0 and result.stdout.strip():
+                try:
+                    return json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    return {"error": f"Invalid JSON output for {html_file.name}: {result.stdout}"}
+            else:
+                error_msg = result.stderr if result.stderr else result.stdout
+                try:
+                    error_data = json.loads(error_msg)
+                    return {"error": error_data.get('error', error_msg)}
+                except:
+                    return {"error": f"Puppeteer error for {html_file.name}: {error_msg}"}
+                    
+        except subprocess.TimeoutExpired:
+            return {"error": f"Timeout after {Config.TIMEOUT_PER_FILE} seconds for {html_file.name}"}
+        except Exception as e:
+            return {"error": f"Exception for {html_file.name}: {str(e)}"}
     
     def ensure_puppeteer_available(self):
         """Ensure Puppeteer and axe-core are available locally"""
